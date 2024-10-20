@@ -1,0 +1,51 @@
+# Byte-compiled Python files
+__pycache__/
+*.py[cod]
+
+# Log files
+*.log
+
+# Jupyter notebook checkpoints
+*.ipynb_checkpoints/
+
+# Jupyter notebook output cells
+*.ipynb
+
+# Local configuration files
+.env
+.secrets
+
+# Virtual environment files
+.venv/
+env/
+virtualenv/
+
+bin/
+etc/
+include/
+lib/
+share/
+
+output_data.txt
+separated/htdemucs/
+music/
+
+# Data files
+data/
+*.csv
+*.json
+*.pickle
+
+# IDE and editor files
+.vscode/
+.idea/
+.spyderproject
+
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Other
+*.bak
+*.tmp
+__init__.pyc

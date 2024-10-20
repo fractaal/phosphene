@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Music Visualization</title>
+    <style>
+      @keyframes beep {
+        0% {
+          background-color: red;
+        }
+        100% {
+          background-color: white;
+        }
+      }
+      .beep {
+        animation: beep 0.5s;
+      }
+    </style>
+  </head>
+  <body>
+    <input type="file" id="fileInput" />
+
+    <audio id="audio" controls src="music/Hello Hello Hello.opus"></audio>
+    <div id="stats"></div>
+
+    <div id="time">test</div>
+    <div id="beat">BEAT</div>
+
+    <div id="2d_pca">X,Y</div>
+    <canvas
+      id="pcaCanvas"
+      width="500"
+      height="500"
+      style="background-color: black"
+    ></canvas>
+
+    <div id="scalar_pca">SCALAR_PCA</div>
+    <canvas
+      id="energyCanvas"
+      width="500"
+      height="100"
+      style="background-color: black"
+    ></canvas>
+
+    <script defer>
+      let lastCurrentTime = -1;
+
+      function toArray(rgb) {
+        const r = rgb >> 16;
+        const g = (rgb >> 8) % 256;
+        const b = rgb % 256;
+
+        return [r, g, b];
+      }
+
+      function lerpColor(col1, col2, p) {
+        const rgb1 = parseInt(col1, 16);
+        const rgb2 = parseInt(col2, 16);
+
+        const [r1, g1, b1] = toArray(rgb1);
+        const [r2, g2, b2] = toArray(rgb2);
+
+        const q = 1 - p;
+        const rr = Math.round(r1 * p + r2 * q);
+        const rg = Math.round(g1 * p + g2 * q);
+        const rb = Math.round(b1 * p + b2 * q);
+
+        return Number((rr << 16) + (rg << 8) + rb).toString(16);
+      }
+
+      console.log("I exist");
+
+      let data = [];
+
+      document
+        .getElementById("fileInput")
+        .addEventListener("change", function (event) {
+          const file = event.target.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = function (e) {
+              const contents = e.target.result;
+
+              data = contents.split("\n").map((line) => line.split("|"));
+              data.shift(); // Remove the first element (0th index) of the data array
+
+              for (let i = 0; i < data.length; i++) {
+                let row = data[i];
+
+                row[0] = parseFloat(row[0]);
+                row[1] = parseFloat(row[1]);
+                row[2] = parseFloat(row[2]);
+                row[3] = parseFloat(row[3]);
+              }
+
+              // Find the min and max values for energy, vibe_x, and vibe_y
+              for (let i = 0; i < data.length; i++) {
+                let row = data[i];
+
+                if (row[3] < min_energy) {
+                  min_energy = row[3];
+                }
+                if (row[3] > max_energy) {
+                  max_energy = row[3];
+                }
+
+                if (row[1] < min_vibe_x) {
+                  min_vibe_x = row[1];
+                }
+                if (row[1] > max_vibe_x) {
+                  max_vibe_x = row[1];
+                }
+
+                if (row[2] < min_vibe_y) {
+                  min_vibe_y = row[2];
+                }
+                if (row[2] > max_vibe_y) {
+                  max_vibe_y = row[2];
+                }
+              }
+
+              document.getElementById("stats").textContent =
+                "MIN ENERGY: " +
+                min_energy +
+                ", MAX ENERGY: " +
+                max_energy +
+                ", MIN VIBE_X: " +
+                min_vibe_x +
+                ", MAX VIBE_X: " +
+                max_vibe_x +
+                ", MIN VIBE_Y: " +
+                min_vibe_y +
+                ", MAX VIBE_Y: " +
+                max_vibe_y +
+                ", LENGTH: " +
+                data.length +
+                " rows";
+
+              console.log(data);
+            };
+            reader.readAsText(file);
+          }
+        });
+
+      let current_data_index = 0;
+      const look_back_steps = 5; // Number of steps to look back for beat detection
+      const trail_length = 1500; // Number of trailing points for 2D PCA visualization
+      const energy_trail_length = 500; // Number of data points for energy visualization
+
+      let min_energy = Infinity;
+      let max_energy = -Infinity;
+
+      let min_vibe_x = Infinity;
+      let max_vibe_x = -Infinity;
+
+      let min_vibe_y = Infinity;
+      let max_vibe_y = -Infinity;
+
+      let trail_points = [];
+      let energy_points = [];
+
+      function findDataIndex() {
+        let current_time = document.getElementById("audio").currentTime;
+
+        for (let i = current_data_index; i < data.length; i++) {
+          if (data[i][0] > current_time) {
+            current_data_index = i;
+            return i;
+          }
+        }
+
+        return -1;
+      }
+
+      function update() {
+        document.getElementById("time").textContent =
+          "TIME: " + document.getElementById("audio").currentTime;
+
+        findDataIndex();
+
+        if (data[current_data_index]) {
+          let energy = data[current_data_index][3];
+          let vibe_x = data[current_data_index][1];
+          let vibe_y = data[current_data_index][2];
+
+          let beatDetected = false;
+
+          // Check the current data point and look back for beats
+          for (
+            let i = 0;
+            i <= look_back_steps && current_data_index - i >= 0;
+            i++
+          ) {
+            if (data[current_data_index - i][4].trim() == "True") {
+              beatDetected = true;
+              break;
+            }
+          }
+
+          document.getElementById("beat").textContent =
+            "BEAT: " + (beatDetected ? "True" : "False");
+
+          if (beatDetected) {
+            document.getElementById("beat").classList.remove("beep");
+            setTimeout(() => {
+              document.getElementById("beat").classList.add("beep");
+            }, 10);
+          }
+
+          document.getElementById("2d_pca").textContent =
+            "VIBE: " + vibe_x + ", " + vibe_y;
+          document.getElementById("scalar_pca").textContent =
+            "ENERGY: " + data[current_data_index][3];
+
+          // Add the current point to the trail
+          let pcaCanvas = document.getElementById("pcaCanvas");
+          let pcaCtx = pcaCanvas.getContext("2d");
+          let pcaCanvasWidth = pcaCanvas.width;
+          let pcaCanvasHeight = pcaCanvas.height;
+
+          let pointX =
+            ((vibe_x - min_vibe_x) / (max_vibe_x - min_vibe_x)) *
+            pcaCanvasWidth;
+          let pointY =
+            ((vibe_y - min_vibe_y) / (max_vibe_y - min_vibe_y)) *
+            pcaCanvasHeight;
+
+          trail_points.push({
+            x: pointX,
+            y: pointY,
+            _energy:
+              ((energy - min_energy) / (max_energy - min_energy)) *
+              (beatDetected ? 2 : 1),
+          });
+          if (trail_points.length > trail_length) {
+            trail_points.shift(); // Remove the oldest point if the trail is too long
+          }
+
+          // Clear the PCA canvas
+          pcaCtx.clearRect(0, 0, pcaCanvasWidth, pcaCanvasHeight);
+
+          // Draw the trail points with interpolated colors
+          for (let i = 0; i < trail_points.length - 1; i++) {
+            let t = i / (trail_points.length - 1);
+
+            if (t < 0.95) {
+              t = t / 0.95;
+              pcaCtx.strokeStyle = "#" + lerpColor("23cc50", "3f00a3", t);
+              pcaCtx.fillStyle = "#" + lerpColor("23cc50", "3f00a3", t);
+            } else {
+              t = (t - 0.95) / 0.05;
+              pcaCtx.strokeStyle = "#" + lerpColor("ffff57", "23cc50", t);
+              pcaCtx.fillStyle = "#" + lerpColor("ffff57", "23cc50", t);
+            }
+
+            let opacity = (i + 1) / trail_points.length;
+            pcaCtx.globalAlpha = opacity;
+
+            let start = trail_points[i];
+            let end = trail_points[i + 1];
+
+            let radiusStart = 20 * start._energy;
+            let radiusEnd = 20 * end._energy;
+
+            // Draw arcs between the points to simulate lines with varying radius
+            pcaCtx.beginPath();
+            pcaCtx.arc(start.x, start.y, radiusStart, 0, Math.PI * 2);
+            pcaCtx.fill();
+
+            pcaCtx.beginPath();
+            pcaCtx.moveTo(start.x, start.y);
+            pcaCtx.lineTo(end.x, end.y);
+            pcaCtx.stroke();
+
+            pcaCtx.beginPath();
+            pcaCtx.arc(end.x, end.y, radiusEnd, 0, Math.PI * 2);
+            pcaCtx.fill();
+          }
+          pcaCtx.globalAlpha = 1.0; // Reset the opacity to default
+
+          // Add the current energy point and beat marker
+          energy_points.push({
+            value: energy,
+            beat: beatDetected,
+          });
+          if (energy_points.length > energy_trail_length) {
+            energy_points.shift(); // Remove the oldest point if the trail is too long
+          }
+
+          // Draw the energy line graph
+          let energyCanvas = document.getElementById("energyCanvas");
+          let energyCtx = energyCanvas.getContext("2d");
+          let energyCanvasWidth = energyCanvas.width;
+          let energyCanvasHeight = energyCanvas.height;
+
+          // Clear the energy canvas
+          energyCtx.clearRect(0, 0, energyCanvasWidth, energyCanvasHeight);
+
+          // Draw the energy points
+          energyCtx.beginPath();
+          energyCtx.moveTo(
+            0,
+            energyCanvasHeight -
+              ((energy_points[0].value - min_energy) /
+                (max_energy - min_energy)) *
+                energyCanvasHeight
+          );
+          for (let i = 1; i < energy_points.length; i++) {
+            let x = (i / energy_trail_length) * energyCanvasWidth;
+            let y =
+              energyCanvasHeight -
+              ((energy_points[i].value - min_energy) /
+                (max_energy - min_energy)) *
+                energyCanvasHeight;
+            energyCtx.lineTo(x, y);
+          }
+          energyCtx.strokeStyle = "red";
+          energyCtx.stroke();
+
+          // Draw beat markers
+          for (let i = 0; i < energy_points.length; i++) {
+            if (
+              energy_points[i].beat &&
+              energy_points[i - 1] &&
+              !energy_points[i - 1].beat
+            ) {
+              let x = (i / energy_trail_length) * energyCanvasWidth;
+              energyCtx.beginPath();
+              energyCtx.moveTo(x, 0);
+              energyCtx.lineTo(x, energyCanvasHeight);
+              energyCtx.strokeStyle = "yellow";
+              energyCtx.stroke();
+            }
+          }
+        }
+
+        if (lastCurrentTime > document.getElementById("audio").currentTime) {
+          // Reset the trail points if the audio is rewound
+          trail_points = [];
+          energy_points = [];
+
+          current_data_index = 0;
+        }
+
+        lastCurrentTime = document.getElementById("audio").currentTime;
+        requestAnimationFrame(update);
+      }
+
+      requestAnimationFrame(update);
+    </script>
+  </body>
+</html>
